@@ -1,9 +1,9 @@
 import requests
 import datetime
 from itertools import repeat
-from bokeh.plotting import figure, show
-from bokeh.models import HoverTool
-from bokeh.layouts import row
+from bokeh.plotting import figure, show, curdoc
+from bokeh.models import HoverTool, Slider, Paragraph
+from bokeh.layouts import row, column
 
 
 def get_data_bitfinex(time_start, time_stop, granularity):
@@ -102,12 +102,13 @@ def create_candles(data, dark_theme=False):
 
     bar_width = (data[1][0] - data[0][0]) * 0.7
 
-    candles = figure()
+    candles = figure(x_axis_type='datetime')
     candles.vbar(vbar_green_x, bar_width, vbar_green_top, vbar_green_bottom, fill_color='green', line_color='green')
     candles.vbar(vbar_red_x, bar_width, vbar_red_top, vbar_red_bottom, fill_color='red', line_color='red')
     candles.segment(vbar_green_x, y0_green, vbar_green_x, y1_green, color='green')
     candles.segment(vbar_red_x, y0_red, vbar_red_x, y1_red, color='red')
     candles.sizing_mode = 'stretch_both'
+    # candles.x_axis_type = 'datetime'
 
     if dark_theme:
         candles.border_fill_color = 'dimgray'
@@ -145,10 +146,18 @@ def create_volumes(bins, volumes, height, dark_theme=False):
 
 
 def test():
-    time1 = datetime.datetime(2020, 1, 6)
-    time2 = datetime.datetime(2020, 4, 26)
+    # time1 = datetime.datetime(2020, 1, 6)
+    # time1 = datetime.datetime(2019, 1, 4)
+    time1 = datetime.datetime(2020, 5, 1)
+    time2 = datetime.datetime(2020, 5, 1)
     time2 = datetime.datetime.utcnow()
-    gr = '3h'
+    gr = '15m'
+
+    days = time2 - time1
+    print('days', days.days)
+
+    day_slider = Slider(start=0, end=1 + days.days, value=1 + days.days, step=1, title='Day Selector')
+    day_slider.on_change('value', update_source_data)
 
     data = get_data_bitfinex(time1, time2, gr)
     bins, volumes = generate_volumes(data, 10)
@@ -157,9 +166,22 @@ def test():
 
     layout = row(volumes, candles)
     layout.sizing_mode = 'stretch_both'
-    show(layout)
+
+    document = column(day_slider, layout)
+    document.sizing_mode = 'stretch_both'
+
+    # show(document)
+    # show(layout)
     # show(candles)
+    curdoc().add_root(document)
 
 
-if __name__ == '__main__':
-    test()
+def update_source_data(attr, old, new):
+    print('slider value changed')
+
+
+# if __name__ == '__main__':
+#    test()
+test()
+
+# start bokeh server by 'bokeh serve --show visualizer.py'
