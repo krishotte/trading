@@ -1,7 +1,7 @@
 import requests
 import datetime
 from itertools import repeat
-from bokeh.plotting import figure, show, curdoc
+from bokeh.plotting import figure, show, curdoc, ColumnDataSource
 from bokeh.models import HoverTool, Slider, Paragraph
 from bokeh.layouts import row, column
 
@@ -26,7 +26,7 @@ def get_data_bitfinex(time_start, time_stop, granularity):
     r = requests.get(url, params=payload)
 
     data = r.json()
-    print(data)
+    # print(data)
 
     return data
 
@@ -180,8 +180,132 @@ def update_source_data(attr, old, new):
     print('slider value changed')
 
 
+class Document:
+    def __init__(self, time1, granularity):
+        self.time1 = time1  # datetime.datetime(2020, 4, 1)
+        self.time2 = datetime.datetime.utcnow()
+        self.granularity = granularity  # '5m'
+
+        self.days = self.time2 - self.time1
+        print('days', self.days.days)
+
+        self.day_slider = Slider(start=0, end=self.days.days, value=self.days.days, step=1, title='Day Selector')
+        self.day_slider.on_change('value', self.select_data)
+
+        self.raw_data = get_data_bitfinex(self.time1, self.time2, self.granularity)
+        self.time_step = (self.raw_data[1][0] - self.raw_data[0][0]) / 1000
+        self.day_length = 86400 / self.time_step
+
+        print('delta (s): ', self.time_step)
+        print('day length: ', self.day_length)
+        print('raw data length: ', len(self.raw_data))
+        print('actual data start: ', self.day_slider.value * self.day_length)
+
+        self.green_candles = ColumnDataSource(data={'timestamps': [], 'candles_bottom': [], 'candles_top': []})
+        # self.red_candles = ColumnDataSource(data=None)
+        # self.blue_volumes = ColumnDataSource(data=None)
+
+        self.create_candles()
+        self.select_data_()
+        self.create_candles_plot()
+        # bins, volumes = generate_volumes(self.raw_data, 10)
+        # self.bins = bins
+        # self.volumes = volumes
+        # candles_plot = create_candles(data, dark_theme=True)
+        # volumes_plot = create_volumes(bins, volumes, 10, dark_theme=True)
+
+    def create_candles(self):
+        self.segment_y0_green = []
+        self.segment_y1_green = []
+        self.segment_y0_red = []
+        self.segment_y1_red = []
+        self.vbar_green_x = []
+        self.vbar_green_top = []
+        self.vbar_green_bottom = []
+        self.vbar_red_x = []
+        self.vbar_red_top = []
+        self.vbar_red_bottom = []
+
+        for each in self.raw_data:
+            if each[1] < each[2]:
+                self.vbar_green_x.append(each[0])
+                self.vbar_green_top.append(each[2])
+                self.vbar_green_bottom.append(each[1])
+
+                self.segment_y0_green.append(each[4])
+                self.segment_y1_green.append(each[3])
+            else:
+                self.vbar_red_x.append(each[0])
+                self.vbar_red_top.append(each[2])
+                self.vbar_red_bottom.append(each[1])
+
+                self.segment_y0_red.append(each[4])
+                self.segment_y1_red.append(each[3])
+
+    def select_data_(self):
+        start_timestamp = self.raw_data[int(self.day_slider.value * self.day_length)][0]
+        print('searchin for timestamp ', start_timestamp)
+
+        for i in range(len(self.vbar_green_x)):
+            if self.vbar_green_x[i] >= start_timestamp:
+                break
+        print('timestamp found ', self.vbar_green_x[i])
+
+        self.green_candles.data = {
+            'timestamps': self.vbar_green_x[i:-1],
+            'candles_bottom': self.vbar_green_bottom[i:-1],
+            'candles_top': self.vbar_green_top[i:-1]
+        }
+
+    def create_candles_plot(self):
+        self.candles = figure(x_axis_type='datetime')
+        self.candles.vbar(
+            x='timestamps',
+            width=900000,
+            top='candles_top',
+            bottom='candles_bottom',
+            source=self.green_candles,
+            fill_color='green',
+            line_color='green'
+        )
+
+    def select_data(self, attr, old, new):
+        print('slider value changed: ', new)
+
+        start_timestamp = self.raw_data[int(self.day_slider.value * self.day_length)][0]
+        try:
+            stop_timestamp = self.raw_data[int((self.day_slider.value + 1) * self.day_length)][0]
+        except IndexError:
+            stop_timestamp = self.raw_data[-1][0]
+
+        for i in range(len(self.vbar_green_x)):
+            if self.vbar_green_x[i] >= start_timestamp:
+                break
+
+        # if self.day_slider.value < self.day_slider.end:
+        for j in range(len(self.vbar_green_x)):
+            if self.vbar_green_x[j] >= stop_timestamp:
+                break
+
+        self.green_candles.data = {
+            'timestamps': self.vbar_green_x[i:j],
+            'candles_bottom': self.vbar_green_bottom[i:j],
+            'candles_top': self.vbar_green_top[i:j]
+        }
+
+
 # if __name__ == '__main__':
 #    test()
-test()
+# test()
+
+time1 = datetime.datetime(2020, 4, 25)
+granularity = '15m'
+
+doc = Document(time1, granularity)
+doc.candles.sizing_mode = 'stretch_both'
+
+layout = column(doc.day_slider, doc.candles)
+layout.sizing_mode = 'stretch_both'
+curdoc().add_root(layout)
 
 # start bokeh server by 'bokeh serve --show visualizer.py'
