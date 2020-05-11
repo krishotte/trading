@@ -59,15 +59,15 @@ def generate_volumes(data, width=50):
     for each in data:
         bin_stop = (bin_last - round(each[3] / width) * width) / width
         bin_stop = len(bins) - bin_stop - 1
-        print('bin_stop: ', bin_stop)
+        # print('bin_stop: ', bin_stop)
 
         bin_start = (round(each[4] / width) * width - bin_first) / width
-        print('bin_start :', bin_start)
+        # print('bin_start :', bin_start)
 
         for i in range(int(bin_start), int(bin_stop) + 1):
             volumes[i] += each[5] / (bin_stop - bin_start + 1)
 
-        print('volumes: ', volumes)
+        # print('volumes: ', volumes)
 
     return bins, volumes
 
@@ -202,12 +202,14 @@ class Document:
         print('actual data start: ', self.day_slider.value * self.day_length)
 
         self.green_candles = ColumnDataSource(data={'timestamps': [], 'candles_bottom': [], 'candles_top': []})
-        # self.red_candles = ColumnDataSource(data=None)
-        # self.blue_volumes = ColumnDataSource(data=None)
+        self.red_candles = ColumnDataSource(data={'timestamps': [], 'candles_bottom': [], 'candles_top': []})
+        self.blue_volumes = ColumnDataSource(data={'bins':[], 'volumes':[]})
 
         self.create_candles()
-        self.select_data_()
+        # self.select_data_()
+        self.select_data('value', self.day_slider.value, self.day_slider.value)
         self.create_candles_plot()
+        self.create_volumes_plot()
         # bins, volumes = generate_volumes(self.raw_data, 10)
         # self.bins = bins
         # self.volumes = volumes
@@ -243,6 +245,10 @@ class Document:
                 self.segment_y1_red.append(each[3])
 
     def select_data_(self):
+        """
+        initial data select function
+        :return:
+        """
         start_timestamp = self.raw_data[int(self.day_slider.value * self.day_length)][0]
         print('searchin for timestamp ', start_timestamp)
 
@@ -261,15 +267,59 @@ class Document:
         self.candles = figure(x_axis_type='datetime')
         self.candles.vbar(
             x='timestamps',
-            width=900000,
+            width=self.time_step * 1000 * 0.7,  # 900000,
             top='candles_top',
             bottom='candles_bottom',
             source=self.green_candles,
             fill_color='green',
             line_color='green'
         )
+        self.candles.vbar(
+            x='timestamps',
+            width=self.time_step * 1000 * 0.7,  # 900000,
+            top='candles_top',
+            bottom='candles_bottom',
+            source=self.red_candles,
+            fill_color='red',
+            line_color='red'
+        )
+        self.candles.segment(
+            x0='timestamps',
+            y0='segment_min',
+            x1='timestamps',
+            y1='segment_max',
+            source=self.green_candles,
+            color='green'
+        )
+        self.candles.segment(
+            x0='timestamps',
+            y0='segment_min',
+            x1='timestamps',
+            y1='segment_max',
+            source=self.red_candles,
+            color='red'
+        )
+
+    def create_volumes_plot(self):
+        self.volume_plot = figure()
+        self.volume_plot.hbar(
+            y='bins',
+            height=self.bin_height * 0.7,
+            left=0,
+            right='volumes',
+            source=self.blue_volumes,
+        )
+        self.volume_plot.add_tools(HoverTool())
+        self.volume_plot.sizing_mode = 'stretch_height'
 
     def select_data(self, attr, old, new):
+        """
+        day_slider value change callback function
+        :param attr:
+        :param old:
+        :param new:
+        :return:
+        """
         print('slider value changed: ', new)
 
         start_timestamp = self.raw_data[int(self.day_slider.value * self.day_length)][0]
@@ -290,7 +340,38 @@ class Document:
         self.green_candles.data = {
             'timestamps': self.vbar_green_x[i:j],
             'candles_bottom': self.vbar_green_bottom[i:j],
-            'candles_top': self.vbar_green_top[i:j]
+            'candles_top': self.vbar_green_top[i:j],
+            'segment_min': self.segment_y0_green[i:j],
+            'segment_max': self.segment_y1_green[i:j],
+        }
+
+        for k in range(len(self.vbar_red_x)):
+            if self.vbar_red_x[k] >= start_timestamp:
+                break
+
+        # if self.day_slider.value < self.day_slider.end:
+        for l in range(len(self.vbar_red_x)):
+            if self.vbar_red_x[l] >= stop_timestamp:
+                break
+
+        self.red_candles.data = {
+            'timestamps': self.vbar_red_x[k:l],
+            'candles_bottom': self.vbar_red_bottom[k:l],
+            'candles_top': self.vbar_red_top[k:l],
+            'segment_min': self.segment_y0_red[k:l],
+            'segment_max': self.segment_y1_red[k:l],
+        }
+
+        raw_data_start = int(self.day_slider.value * self.day_length)
+        raw_data_stop = int(raw_data_start + self.day_length)
+
+        self.bin_height = 5
+        bins, volumes = generate_volumes(self.raw_data[raw_data_start:raw_data_stop], self.bin_height)
+        self.bins = bins
+        self.volumes = volumes
+        self.blue_volumes.data = {
+            'bins': self.bins,
+            'volumes': self.volumes,
         }
 
 
@@ -299,12 +380,12 @@ class Document:
 # test()
 
 time1 = datetime.datetime(2020, 4, 25)
-granularity = '15m'
+granularity = '5m'
 
 doc = Document(time1, granularity)
 doc.candles.sizing_mode = 'stretch_both'
 
-layout = column(doc.day_slider, doc.candles)
+layout = column(doc.day_slider, row(doc.volume_plot, doc.candles))
 layout.sizing_mode = 'stretch_both'
 curdoc().add_root(layout)
 
