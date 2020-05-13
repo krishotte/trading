@@ -2,7 +2,7 @@ import requests
 import datetime
 from itertools import repeat
 from bokeh.plotting import figure, show, curdoc, ColumnDataSource
-from bokeh.models import HoverTool, Slider, Paragraph
+from bokeh.models import HoverTool, Slider, Paragraph, Tabs, Panel, RangeSlider, DateRangeSlider
 from bokeh.layouts import row, column
 
 
@@ -27,6 +27,10 @@ def get_data_bitfinex(time_start, time_stop, granularity):
 
     data = r.json()
     # print(data)
+
+    url2 = f'https://api-pub.bitfinex.com/v2/candles/trade:{granularity}:tBTCUSD/last'
+    r2 = requests.get(url)
+    print('last data: ', r2.json(), r.json()[-1])
 
     return data
 
@@ -183,7 +187,7 @@ def update_source_data(attr, old, new):
 class Document:
     def __init__(self, time1, granularity):
         self.time1 = time1  # datetime.datetime(2020, 4, 1)
-        self.time2 = datetime.datetime.utcnow()
+        self.time2 = datetime.datetime.now()  # utcnow()
         self.granularity = granularity  # '5m'
 
         self.days = self.time2 - self.time1
@@ -203,7 +207,7 @@ class Document:
 
         self.green_candles = ColumnDataSource(data={'timestamps': [], 'candles_bottom': [], 'candles_top': []})
         self.red_candles = ColumnDataSource(data={'timestamps': [], 'candles_bottom': [], 'candles_top': []})
-        self.blue_volumes = ColumnDataSource(data={'bins':[], 'volumes':[]})
+        self.blue_volumes = ColumnDataSource(data={'bins': [], 'volumes': []})
 
         self.create_candles()
         # self.select_data_()
@@ -299,6 +303,19 @@ class Document:
             source=self.red_candles,
             color='red'
         )
+        hover_tool = HoverTool(
+            tooltips=[
+                ('time', '@timestamps{%Y-%m-%d %H:%M}'),
+                ('open', '@candles_bottom{(0.0)}'),
+                ('close', '@candles_top{(0.0)}'),
+                ('high', '@segment_max{(0.0)}'),
+                ('low', '@segment_min{(0.0)}'),
+            ],
+            formatters={
+                '@timestamps': 'datetime'
+            }
+        )
+        self.candles.add_tools(hover_tool)
 
     def create_volumes_plot(self):
         self.volume_plot = figure()
@@ -309,7 +326,11 @@ class Document:
             right='volumes',
             source=self.blue_volumes,
         )
-        self.volume_plot.add_tools(HoverTool())
+        hover_tool = HoverTool(tooltips=[
+            ('price: ', '@bins{(0)}'),
+            ('volume: ', '@volumes{(0)}')
+        ])
+        self.volume_plot.add_tools(hover_tool)
         self.volume_plot.sizing_mode = 'stretch_height'
 
     def select_data(self, attr, old, new):
@@ -375,6 +396,107 @@ class Document:
         }
 
 
+class VariableDocument(Document):
+    def __init__(self, time1, granularity):
+        self.time1 = time1  # datetime.datetime(2020, 4, 1)
+        self.time2 = datetime.datetime.now()  # utcnow()
+        self.granularity = granularity  # '5m'
+
+        self.raw_data = get_data_bitfinex(self.time1, self.time2, self.granularity)
+        start = self.raw_data[0][0]
+        dt_start = datetime.datetime.fromtimestamp(start / 1000)
+        end = self.raw_data[-1][0]
+        dt_end = datetime.datetime.fromtimestamp(end / 1000)
+        print('start ts: ', start, dt_start)
+        print('end ts: ', end, dt_end)
+
+        self.range_slider = RangeSlider(start=start, end=end, value=(start, end), step=3600000, title='Selected period')
+        self.range_slider2 = DateRangeSlider(start=dt_start, end=dt_end, value=(dt_start, dt_end), step=1)
+        self.range_slider.on_change('value', self.update_paragraph)
+        self.range_slider.on_change('value_throttled', self.select_data)
+
+        self.range_slider_value = str(dt_start) + ' : ' + str(dt_end)
+        self.paragraph = Paragraph(text='')
+
+        self.time_step = (self.raw_data[1][0] - self.raw_data[0][0]) / 1000
+        print('delta (s): ', self.time_step)
+
+        self.green_candles = ColumnDataSource(data={'timestamps': [], 'candles_bottom': [], 'candles_top': []})
+        self.red_candles = ColumnDataSource(data={'timestamps': [], 'candles_bottom': [], 'candles_top': []})
+        self.blue_volumes = ColumnDataSource(data={'bins': [], 'volumes': []})
+
+        self.create_candles()
+        self.select_data('value', self.range_slider.value, self.range_slider.value)
+        self.create_candles_plot()
+        self.create_volumes_plot()
+
+    def update_paragraph(self, attr, old, new):
+        value1 = datetime.datetime.fromtimestamp(self.range_slider.value[0] / 1000)
+        value2 = datetime.datetime.fromtimestamp(self.range_slider.value[1] / 1000)
+        self.paragraph.text = str(value1) + ' : ' + str(value2)
+        # self.select_data('value', self.range_slider.value, self.range_slider.value)
+
+    def select_data(self, attr, old, new):
+        start = self.range_slider.start
+        end = self.range_slider.end
+        value1 = self.range_slider.value[0]
+        value2 = self.range_slider.value[1]
+        index1 = (value1 - start) / (self.time_step * 1000)
+        index2 = (value2 - start) / (self.time_step * 1000)
+
+        print('indexes: ', index1, ', ', index2)
+
+        # start_timestamp = self.raw_data[int(self.day_slider.value * self.day_length)][0]
+        # stop_timestamp = self.raw_data[int((self.day_slider.value + 1) * self.day_length)][0]
+
+        # i = int(index1)
+        # j = int(index2)
+
+        for i in range(len(self.vbar_green_x)):
+            if self.vbar_green_x[i] >= value1:
+                break
+
+        for j in range(len(self.vbar_green_x)):
+            if self.vbar_green_x[j] >= value2:
+                break
+
+        self.green_candles.data = {
+            'timestamps': self.vbar_green_x[i:j],
+            'candles_bottom': self.vbar_green_bottom[i:j],
+            'candles_top': self.vbar_green_top[i:j],
+            'segment_min': self.segment_y0_green[i:j],
+            'segment_max': self.segment_y1_green[i:j],
+        }
+
+        for k in range(len(self.vbar_red_x)):
+            if self.vbar_red_x[k] >= value1:
+                break
+
+        # if self.day_slider.value < self.day_slider.end:
+        for l in range(len(self.vbar_red_x)):
+            if self.vbar_red_x[l] >= value2:
+                break
+
+        self.red_candles.data = {
+            'timestamps': self.vbar_red_x[k:l],
+            'candles_bottom': self.vbar_red_bottom[k:l],
+            'candles_top': self.vbar_red_top[k:l],
+            'segment_min': self.segment_y0_red[k:l],
+            'segment_max': self.segment_y1_red[k:l],
+        }
+
+        raw_data_start = int(index1)  # int(self.day_slider.value * self.day_length)
+        raw_data_stop = int(index2)  # int(raw_data_start + self.day_length)
+
+        self.bin_height = 50
+        bins, volumes = generate_volumes(self.raw_data[raw_data_start:raw_data_stop], self.bin_height)
+        self.bins = bins
+        self.volumes = volumes
+        self.blue_volumes.data = {
+            'bins': self.bins,
+            'volumes': self.volumes,
+        }
+
 # if __name__ == '__main__':
 #    test()
 # test()
@@ -384,9 +506,31 @@ granularity = '5m'
 
 doc = Document(time1, granularity)
 doc.candles.sizing_mode = 'stretch_both'
+# doc.sizing_mode = 'stretch_both'
+doc.volume_plot.y_range = doc.candles.y_range
 
-layout = column(doc.day_slider, row(doc.volume_plot, doc.candles))
+row1 = row(doc.volume_plot, doc.candles)
+row1.sizing_mode = 'stretch_both'
+
+layout = column(doc.day_slider, row1)
 layout.sizing_mode = 'stretch_both'
-curdoc().add_root(layout)
+
+tab1 = Panel(child=layout, title='daily')
+
+
+time2 = datetime.datetime(2019, 1, 1)
+vardoc = VariableDocument(time2, '1D')
+vardoc.candles.sizing_mode = 'stretch_both'
+vardoc.volume_plot.y_range = vardoc.candles.y_range
+
+row2 = row(vardoc.volume_plot, vardoc.candles)
+row2.sizing_mode = 'stretch_both'
+
+vardoc_layout = column(vardoc.range_slider, vardoc.paragraph, row2)
+vardoc_layout.sizing_mode = 'stretch_both'
+
+tab2 = Panel(child=vardoc_layout, title='variable')
+tabs = Tabs(tabs=[tab1, tab2])
+curdoc().add_root(tabs)
 
 # start bokeh server by 'bokeh serve --show visualizer.py'
