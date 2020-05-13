@@ -4,6 +4,7 @@ from itertools import repeat
 from bokeh.plotting import figure, show, curdoc, ColumnDataSource
 from bokeh.models import HoverTool, Slider, Paragraph, Tabs, Panel, RangeSlider, DateRangeSlider
 from bokeh.layouts import row, column
+from bokeh.driving import count
 
 
 def get_data_bitfinex(time_start, time_stop, granularity):
@@ -208,6 +209,7 @@ class Document:
         self.green_candles = ColumnDataSource(data={'timestamps': [], 'candles_bottom': [], 'candles_top': []})
         self.red_candles = ColumnDataSource(data={'timestamps': [], 'candles_bottom': [], 'candles_top': []})
         self.blue_volumes = ColumnDataSource(data={'bins': [], 'volumes': []})
+        self.actual_line = ColumnDataSource(data={'timestamps': [], 'values': [], 'name': []})
 
         self.create_candles()
         # self.select_data_()
@@ -303,6 +305,15 @@ class Document:
             source=self.red_candles,
             color='red'
         )
+        self.candles.line(
+            x='timestamps',
+            y='values',
+            source=self.actual_line,
+            line_color='black',
+            line_dash='dashed',
+            name='actual_value',
+            legend_field='values'
+        )
         hover_tool = HoverTool(
             tooltips=[
                 ('time', '@timestamps{%Y-%m-%d %H:%M}'),
@@ -395,6 +406,20 @@ class Document:
             'volumes': self.volumes,
         }
 
+    def update_last_value(self):
+        url2 = f'https://api-pub.bitfinex.com/v2/candles/trade:{self.granularity}:tBTCUSD/last'
+        r2 = requests.get(url2)
+        print('last data: ', r2.json())
+
+        # x = [self.raw_data[0][0], self.raw_data[-1][0]]
+        x = [
+            min(self.green_candles.data['timestamps'][0], self.red_candles.data['timestamps'][0]),
+            max(self.green_candles.data['timestamps'][-1], self.red_candles.data['timestamps'][-1])
+        ]
+        y = [r2.json()[2], r2.json()[2]]
+        # self.actual_line.data = {'timestamps': x, 'values': y, 'name': [str(y[0]), str(y[-1])]}
+        self.actual_line.data = {'timestamps': x, 'values': y}  # , 'name': str(y[0])}
+
 
 class VariableDocument(Document):
     def __init__(self, time1, granularity):
@@ -424,8 +449,10 @@ class VariableDocument(Document):
         self.green_candles = ColumnDataSource(data={'timestamps': [], 'candles_bottom': [], 'candles_top': []})
         self.red_candles = ColumnDataSource(data={'timestamps': [], 'candles_bottom': [], 'candles_top': []})
         self.blue_volumes = ColumnDataSource(data={'bins': [], 'volumes': []})
+        self.actual_line = ColumnDataSource(data={'timestamps': [], 'values': []})
 
         self.create_candles()
+        self.update_paragraph('text', '', '')
         self.select_data('value', self.range_slider.value, self.range_slider.value)
         self.create_candles_plot()
         self.create_volumes_plot()
@@ -532,5 +559,6 @@ vardoc_layout.sizing_mode = 'stretch_both'
 tab2 = Panel(child=vardoc_layout, title='variable')
 tabs = Tabs(tabs=[tab1, tab2])
 curdoc().add_root(tabs)
+curdoc().add_periodic_callback(doc.update_last_value, 2000)
 
 # start bokeh server by 'bokeh serve --show visualizer.py'
