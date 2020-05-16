@@ -30,8 +30,8 @@ def get_data_bitfinex(time_start, time_stop, granularity):
     # print(data)
 
     url2 = f'https://api-pub.bitfinex.com/v2/candles/trade:{granularity}:tBTCUSD/last'
-    r2 = requests.get(url)
-    print('last data: ', r2.json(), r.json()[-1])
+    # r2 = requests.get(url)
+    # print('last data: ', r2.json(), r.json()[-1])
 
     return data
 
@@ -186,10 +186,21 @@ def update_source_data(attr, old, new):
 
 
 class Document:
-    def __init__(self, time1, granularity):
+    def __init__(self, time1, granularity, dark_mode):
         self.time1 = time1  # datetime.datetime(2020, 4, 1)
         self.time2 = datetime.datetime.now()  # utcnow()
         self.granularity = granularity  # '5m'
+        self.dark_mode = dark_mode
+        if self.dark_mode:
+            self.color_green = '#75bb36'
+            self.color_red = '#dd4a4a'
+            self.color_blue = 'light blue'
+            self.color_black = 'white'
+        else:
+            self.color_green = 'green'
+            self.color_red = 'red'
+            self.color_blue = 'blue'
+            self.color_black = 'black'
 
         self.days = self.time2 - self.time1
         print('days', self.days.days)
@@ -271,31 +282,13 @@ class Document:
 
     def create_candles_plot(self):
         self.candles = figure(x_axis_type='datetime')
-        self.candles.vbar(
-            x='timestamps',
-            width=self.time_step * 1000 * 0.7,  # 900000,
-            top='candles_top',
-            bottom='candles_bottom',
-            source=self.green_candles,
-            fill_color='green',
-            line_color='green'
-        )
-        self.candles.vbar(
-            x='timestamps',
-            width=self.time_step * 1000 * 0.7,  # 900000,
-            top='candles_top',
-            bottom='candles_bottom',
-            source=self.red_candles,
-            fill_color='red',
-            line_color='red'
-        )
         self.candles.segment(
             x0='timestamps',
             y0='segment_min',
             x1='timestamps',
             y1='segment_max',
             source=self.green_candles,
-            color='green'
+            color=self.color_green
         )
         self.candles.segment(
             x0='timestamps',
@@ -303,13 +296,33 @@ class Document:
             x1='timestamps',
             y1='segment_max',
             source=self.red_candles,
-            color='red'
+            color=self.color_red
+        )
+        self.candles.vbar(
+            x='timestamps',
+            width=self.time_step * 1000 * 0.7,  # 900000,
+            top='candles_top',
+            bottom='candles_bottom',
+            source=self.green_candles,
+            fill_color=self.color_green,
+            line_color=self.color_green,
+            fill_alpha=0.4,
+        )
+        self.candles.vbar(
+            x='timestamps',
+            width=self.time_step * 1000 * 0.7,  # 900000,
+            top='candles_top',
+            bottom='candles_bottom',
+            source=self.red_candles,
+            fill_color=self.color_red,
+            line_color=self.color_red,
+            fill_alpha=0.4
         )
         self.candles.line(
             x='timestamps',
             y='values',
             source=self.actual_line,
-            line_color='black',
+            line_color=self.color_black,
             line_dash='dashed',
             name='actual_value',
             legend_field='values'
@@ -327,6 +340,24 @@ class Document:
             }
         )
         self.candles.add_tools(hover_tool)
+        # self.candles.output_backend = "webgl"
+
+        print(self.candles.border_fill_color)
+        print(self.candles.background_fill_color)
+        print(self.candles.yaxis[0].major_label_text_color)
+
+        if self.dark_mode:
+            self.candles.border_fill_color = 'dimgray'
+            self.candles.background_fill_color = '#060606'  # '#1f1f1f'  # 'dimgray'
+            self.candles.grid.grid_line_color = '#4a4a4a'  # 'black'
+            self.candles.yaxis[0].major_label_text_color = 'white'
+            self.candles.xaxis[0].major_label_text_color = 'white'
+        else:
+            self.candles.border_fill_color = '#ffffff'
+            self.candles.background_fill_color = '#ffffff'
+            self.candles.grid.grid_line_color = '#e5e5e5'
+            self.candles.yaxis[0].major_label_text_color = '#444444'
+            self.candles.xaxis[0].major_label_text_color = '#444444'
 
     def create_volumes_plot(self):
         self.volume_plot = figure()
@@ -343,6 +374,19 @@ class Document:
         ])
         self.volume_plot.add_tools(hover_tool)
         self.volume_plot.sizing_mode = 'stretch_height'
+
+        if self.dark_mode:
+            self.volume_plot.border_fill_color = 'dimgray'
+            self.volume_plot.background_fill_color = '#1f1f1f'  # 'dimgray'
+            self.volume_plot.grid.grid_line_color = '#4a4a4a'  # 'black'
+            self.volume_plot.yaxis[0].major_label_text_color = 'white'
+            self.volume_plot.xaxis[0].major_label_text_color = 'white'
+        else:
+            self.volume_plot.border_fill_color = '#ffffff'
+            self.volume_plot.background_fill_color = '#ffffff'
+            self.volume_plot.grid.grid_line_color = '#e5e5e5'
+            self.volume_plot.yaxis[0].major_label_text_color = '#444444'
+            self.volume_plot.xaxis[0].major_label_text_color = '#444444'
 
     def select_data(self, attr, old, new):
         """
@@ -370,11 +414,11 @@ class Document:
                 break
 
         self.green_candles.data = {
-            'timestamps': self.vbar_green_x[i:j],
-            'candles_bottom': self.vbar_green_bottom[i:j],
-            'candles_top': self.vbar_green_top[i:j],
-            'segment_min': self.segment_y0_green[i:j],
-            'segment_max': self.segment_y1_green[i:j],
+            'timestamps': self.vbar_green_x[i:j+1],
+            'candles_bottom': self.vbar_green_bottom[i:j+1],
+            'candles_top': self.vbar_green_top[i:j+1],
+            'segment_min': self.segment_y0_green[i:j+1],
+            'segment_max': self.segment_y1_green[i:j+1],
         }
 
         for k in range(len(self.vbar_red_x)):
@@ -387,11 +431,11 @@ class Document:
                 break
 
         self.red_candles.data = {
-            'timestamps': self.vbar_red_x[k:l],
-            'candles_bottom': self.vbar_red_bottom[k:l],
-            'candles_top': self.vbar_red_top[k:l],
-            'segment_min': self.segment_y0_red[k:l],
-            'segment_max': self.segment_y1_red[k:l],
+            'timestamps': self.vbar_red_x[k:l+1],
+            'candles_bottom': self.vbar_red_bottom[k:l+1],
+            'candles_top': self.vbar_red_top[k:l+1],
+            'segment_min': self.segment_y0_red[k:l+1],
+            'segment_max': self.segment_y1_red[k:l+1],
         }
 
         raw_data_start = int(self.day_slider.value * self.day_length)
@@ -409,7 +453,7 @@ class Document:
     def update_last_value(self):
         url2 = f'https://api-pub.bitfinex.com/v2/candles/trade:{self.granularity}:tBTCUSD/last'
         r2 = requests.get(url2)
-        print('last data: ', r2.json())
+        print('last data: ', datetime.datetime.fromtimestamp(r2.json()[0]/1000), r2.json())
 
         # x = [self.raw_data[0][0], self.raw_data[-1][0]]
         x = [
@@ -422,10 +466,21 @@ class Document:
 
 
 class VariableDocument(Document):
-    def __init__(self, time1, granularity):
+    def __init__(self, time1, granularity, dark_mode):
         self.time1 = time1  # datetime.datetime(2020, 4, 1)
         self.time2 = datetime.datetime.now()  # utcnow()
         self.granularity = granularity  # '5m'
+        self.dark_mode = dark_mode
+        if self.dark_mode:
+            self.color_green = '#75bb36'
+            self.color_red = '#dd4a4a'
+            self.color_blue = 'light blue'
+            self.color_black = 'white'
+        else:
+            self.color_green = 'green'
+            self.color_red = 'red'
+            self.color_blue = 'blue'
+            self.color_black = 'black'
 
         self.raw_data = get_data_bitfinex(self.time1, self.time2, self.granularity)
         start = self.raw_data[0][0]
@@ -469,7 +524,7 @@ class VariableDocument(Document):
         value1 = self.range_slider.value[0]
         value2 = self.range_slider.value[1]
         index1 = (value1 - start) / (self.time_step * 1000)
-        index2 = (value2 - start) / (self.time_step * 1000)
+        index2 = (value2 - start) / (self.time_step * 1000) + 1
 
         print('indexes: ', index1, ', ', index2)
 
@@ -488,11 +543,11 @@ class VariableDocument(Document):
                 break
 
         self.green_candles.data = {
-            'timestamps': self.vbar_green_x[i:j],
-            'candles_bottom': self.vbar_green_bottom[i:j],
-            'candles_top': self.vbar_green_top[i:j],
-            'segment_min': self.segment_y0_green[i:j],
-            'segment_max': self.segment_y1_green[i:j],
+            'timestamps': self.vbar_green_x[i:j+1],
+            'candles_bottom': self.vbar_green_bottom[i:j+1],
+            'candles_top': self.vbar_green_top[i:j+1],
+            'segment_min': self.segment_y0_green[i:j+1],
+            'segment_max': self.segment_y1_green[i:j+1],
         }
 
         for k in range(len(self.vbar_red_x)):
@@ -505,11 +560,11 @@ class VariableDocument(Document):
                 break
 
         self.red_candles.data = {
-            'timestamps': self.vbar_red_x[k:l],
-            'candles_bottom': self.vbar_red_bottom[k:l],
-            'candles_top': self.vbar_red_top[k:l],
-            'segment_min': self.segment_y0_red[k:l],
-            'segment_max': self.segment_y1_red[k:l],
+            'timestamps': self.vbar_red_x[k:l+1],
+            'candles_bottom': self.vbar_red_bottom[k:l+1],
+            'candles_top': self.vbar_red_top[k:l+1],
+            'segment_min': self.segment_y0_red[k:l+1],
+            'segment_max': self.segment_y1_red[k:l+1],
         }
 
         raw_data_start = int(index1)  # int(self.day_slider.value * self.day_length)
@@ -531,7 +586,7 @@ class VariableDocument(Document):
 time1 = datetime.datetime(2020, 4, 25)
 granularity = '5m'
 
-doc = Document(time1, granularity)
+doc = Document(time1, granularity, dark_mode=True)
 doc.candles.sizing_mode = 'stretch_both'
 # doc.sizing_mode = 'stretch_both'
 doc.volume_plot.y_range = doc.candles.y_range
@@ -546,7 +601,7 @@ tab1 = Panel(child=layout, title='daily')
 
 
 time2 = datetime.datetime(2019, 1, 1)
-vardoc = VariableDocument(time2, '1D')
+vardoc = VariableDocument(time2, '1D', dark_mode=True)
 vardoc.candles.sizing_mode = 'stretch_both'
 vardoc.volume_plot.y_range = vardoc.candles.y_range
 
