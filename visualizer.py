@@ -367,6 +367,7 @@ class Document:
             left=0,
             right='volumes',
             source=self.blue_volumes,
+            fill_alpha=0.4,
         )
         hover_tool = HoverTool(tooltips=[
             ('price: ', '@bins{(0)}'),
@@ -377,7 +378,7 @@ class Document:
 
         if self.dark_mode:
             self.volume_plot.border_fill_color = 'dimgray'
-            self.volume_plot.background_fill_color = '#1f1f1f'  # 'dimgray'
+            self.volume_plot.background_fill_color = '#060606'  # 'dimgray'
             self.volume_plot.grid.grid_line_color = '#4a4a4a'  # 'black'
             self.volume_plot.yaxis[0].major_label_text_color = 'white'
             self.volume_plot.xaxis[0].major_label_text_color = 'white'
@@ -463,6 +464,12 @@ class Document:
         y = [r2.json()[2], r2.json()[2]]
         # self.actual_line.data = {'timestamps': x, 'values': y, 'name': [str(y[0]), str(y[-1])]}
         self.actual_line.data = {'timestamps': x, 'values': y}  # , 'name': str(y[0])}
+
+    def update_everything(self):
+        self.raw_data = get_data_bitfinex(self.time1, datetime.datetime.now(), self.granularity)
+        self.create_candles()
+        # self.select_data_()
+        self.select_data('value', self.day_slider.value, self.day_slider.value)
 
 
 class VariableDocument(Document):
@@ -615,5 +622,6 @@ tab2 = Panel(child=vardoc_layout, title='variable')
 tabs = Tabs(tabs=[tab1, tab2])
 curdoc().add_root(tabs)
 curdoc().add_periodic_callback(doc.update_last_value, 2000)
+curdoc().add_periodic_callback(doc.update_everything, 60000)
 
 # start bokeh server by 'bokeh serve --show visualizer.py'
