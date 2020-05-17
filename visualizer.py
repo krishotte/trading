@@ -2,7 +2,7 @@ import requests
 import datetime
 from itertools import repeat
 from bokeh.plotting import figure, show, curdoc, ColumnDataSource
-from bokeh.models import HoverTool, Slider, Paragraph, Tabs, Panel, RangeSlider, DateRangeSlider
+from bokeh.models import HoverTool, Slider, Paragraph, Tabs, Panel, RangeSlider, DateRangeSlider, Range1d, LinearAxis
 from bokeh.layouts import row, column
 from bokeh.driving import count
 
@@ -196,11 +196,13 @@ class Document:
             self.color_red = '#dd4a4a'
             self.color_blue = 'light blue'
             self.color_black = 'white'
+            self.color_gray = 'gray'
         else:
             self.color_green = 'green'
             self.color_red = 'red'
             self.color_blue = 'blue'
             self.color_black = 'black'
+            self.color_gray = 'gray'
 
         self.days = self.time2 - self.time1
         print('days', self.days.days)
@@ -221,17 +223,12 @@ class Document:
         self.red_candles = ColumnDataSource(data={'timestamps': [], 'candles_bottom': [], 'candles_top': []})
         self.blue_volumes = ColumnDataSource(data={'bins': [], 'volumes': []})
         self.actual_line = ColumnDataSource(data={'timestamps': [], 'values': [], 'name': []})
+        self.gray_volumes = ColumnDataSource(data={'timestamps': [], 'volumes': []})
 
         self.create_candles()
-        # self.select_data_()
         self.select_data('value', self.day_slider.value, self.day_slider.value)
         self.create_candles_plot()
         self.create_volumes_plot()
-        # bins, volumes = generate_volumes(self.raw_data, 10)
-        # self.bins = bins
-        # self.volumes = volumes
-        # candles_plot = create_candles(data, dark_theme=True)
-        # volumes_plot = create_volumes(bins, volumes, 10, dark_theme=True)
 
     def create_candles(self):
         self.segment_y0_green = []
@@ -244,8 +241,12 @@ class Document:
         self.vbar_red_x = []
         self.vbar_red_top = []
         self.vbar_red_bottom = []
+        self.vbar_gray_x = []
+        self.vbar_gray = []
 
         for each in self.raw_data:
+            self.vbar_gray_x.append(each[0])
+            self.vbar_gray.append(each[5])
             if each[1] < each[2]:
                 self.vbar_green_x.append(each[0])
                 self.vbar_green_top.append(each[2])
@@ -264,6 +265,7 @@ class Document:
     def select_data_(self):
         """
         initial data select function
+        currently not used
         :return:
         """
         start_timestamp = self.raw_data[int(self.day_slider.value * self.day_length)][0]
@@ -282,13 +284,52 @@ class Document:
 
     def create_candles_plot(self):
         self.candles = figure(x_axis_type='datetime')
+        print('volumes: ', max(self.gray_volumes.data['volumes']))
+
+        y_start = min(
+            min(self.green_candles.data['segment_min']),
+            min(self.red_candles.data['segment_min'])
+        )
+        y_end = max(
+            max(self.green_candles.data['segment_max']),
+            max(self.red_candles.data['segment_max'])
+        )
+        self.candles.y_range.start = y_start - (y_end - y_start) * 0.15
+        self.candles.y_range.end = y_end + (y_end - y_start) * 0.05
+
+        self.candles.extra_y_ranges = {
+            'volume_y': Range1d(
+                start=0,
+                end=max(self.gray_volumes.data['volumes']) * 5,
+            ),
+            'candles_y': Range1d(
+                start=y_start - (y_end - y_start) * 0.15,
+                end=y_end + (y_end - y_start) * 0.05,
+            )
+        }
+
+        self.candles.yaxis.visible = False
+        self.candles.add_layout(LinearAxis(y_range_name='candles_y'), 'left')
+
+        self.candles.vbar(
+            x='timestamps',
+            width=self.time_step * 1000 * 0.7,  # 900000,
+            top='volumes',
+            bottom=0,
+            source=self.gray_volumes,
+            fill_color=self.color_gray,
+            line_color=self.color_gray,
+            fill_alpha=0.4,
+            y_range_name='volume_y',
+        )
         self.candles.segment(
             x0='timestamps',
             y0='segment_min',
             x1='timestamps',
             y1='segment_max',
             source=self.green_candles,
-            color=self.color_green
+            color=self.color_green,
+            y_range_name='candles_y',
         )
         self.candles.segment(
             x0='timestamps',
@@ -296,7 +337,8 @@ class Document:
             x1='timestamps',
             y1='segment_max',
             source=self.red_candles,
-            color=self.color_red
+            color=self.color_red,
+            y_range_name='candles_y',
         )
         self.candles.vbar(
             x='timestamps',
@@ -307,6 +349,7 @@ class Document:
             fill_color=self.color_green,
             line_color=self.color_green,
             fill_alpha=0.4,
+            y_range_name='candles_y',
         )
         self.candles.vbar(
             x='timestamps',
@@ -316,7 +359,8 @@ class Document:
             source=self.red_candles,
             fill_color=self.color_red,
             line_color=self.color_red,
-            fill_alpha=0.4
+            fill_alpha=0.4,
+            y_range_name='candles_y',
         )
         self.candles.line(
             x='timestamps',
@@ -325,7 +369,8 @@ class Document:
             line_color=self.color_black,
             line_dash='dashed',
             name='actual_value',
-            legend_field='values'
+            legend_field='values',
+            y_range_name='candles_y',
         )
         hover_tool = HoverTool(
             tooltips=[
@@ -334,10 +379,12 @@ class Document:
                 ('close', '@candles_top{(0.0)}'),
                 ('high', '@segment_max{(0.0)}'),
                 ('low', '@segment_min{(0.0)}'),
+                ('volume', '@volumes{(0.0)}')
             ],
             formatters={
                 '@timestamps': 'datetime'
-            }
+            },
+            # mode='vline'
         )
         self.candles.add_tools(hover_tool)
         # self.candles.output_backend = "webgl"
@@ -351,12 +398,14 @@ class Document:
             self.candles.background_fill_color = '#060606'  # '#1f1f1f'  # 'dimgray'
             self.candles.grid.grid_line_color = '#4a4a4a'  # 'black'
             self.candles.yaxis[0].major_label_text_color = 'white'
+            self.candles.yaxis[1].major_label_text_color = 'white'
             self.candles.xaxis[0].major_label_text_color = 'white'
         else:
             self.candles.border_fill_color = '#ffffff'
             self.candles.background_fill_color = '#ffffff'
             self.candles.grid.grid_line_color = '#e5e5e5'
             self.candles.yaxis[0].major_label_text_color = '#444444'
+            self.candles.yaxis[1].major_label_text_color = '#444444'
             self.candles.xaxis[0].major_label_text_color = '#444444'
 
     def create_volumes_plot(self):
@@ -442,6 +491,11 @@ class Document:
         raw_data_start = int(self.day_slider.value * self.day_length)
         raw_data_stop = int(raw_data_start + self.day_length)
 
+        self.gray_volumes.data = {
+            'timestamps': self.vbar_gray_x[raw_data_start:raw_data_stop],
+            'volumes': self.vbar_gray[raw_data_start:raw_data_stop],
+        }
+
         self.bin_height = 5
         bins, volumes = generate_volumes(self.raw_data[raw_data_start:raw_data_stop], self.bin_height)
         self.bins = bins
@@ -450,6 +504,7 @@ class Document:
             'bins': self.bins,
             'volumes': self.volumes,
         }
+        self.update_ranges()
 
     def update_last_value(self):
         url2 = f'https://api-pub.bitfinex.com/v2/candles/trade:{self.granularity}:tBTCUSD/last'
@@ -471,6 +526,29 @@ class Document:
         # self.select_data_()
         self.select_data('value', self.day_slider.value, self.day_slider.value)
 
+    def update_ranges(self):
+        try:
+            print('updating ranges')
+            y_start = min(
+                min(self.green_candles.data['segment_min']),
+                min(self.red_candles.data['segment_min'])
+            )
+            y_end = max(
+                max(self.green_candles.data['segment_max']),
+                max(self.red_candles.data['segment_max'])
+            )
+            self.candles.y_range.start = y_start - (y_end - y_start) * 0.15
+            self.candles.y_range.end = y_end + (y_end - y_start) * 0.05
+            self.candles.extra_y_ranges['candles_y'].start = y_start - (y_end - y_start) * 0.15
+            self.candles.extra_y_ranges['candles_y'].end = y_end + (y_end - y_start) * 0.05
+
+            print('min: ', y_start, self.candles.y_range.start)
+            print('max: ', y_end, self.candles.y_range.end)
+
+            self.candles.extra_y_ranges['volume_y'].end = max(self.gray_volumes.data['volumes']) * 5
+        except AttributeError:
+            print('ranges not updated')
+
 
 class VariableDocument(Document):
     def __init__(self, time1, granularity, dark_mode):
@@ -483,11 +561,13 @@ class VariableDocument(Document):
             self.color_red = '#dd4a4a'
             self.color_blue = 'light blue'
             self.color_black = 'white'
+            self.color_gray = 'gray'
         else:
             self.color_green = 'green'
             self.color_red = 'red'
             self.color_blue = 'blue'
             self.color_black = 'black'
+            self.color_gray = 'gray'
 
         self.raw_data = get_data_bitfinex(self.time1, self.time2, self.granularity)
         start = self.raw_data[0][0]
@@ -512,6 +592,7 @@ class VariableDocument(Document):
         self.red_candles = ColumnDataSource(data={'timestamps': [], 'candles_bottom': [], 'candles_top': []})
         self.blue_volumes = ColumnDataSource(data={'bins': [], 'volumes': []})
         self.actual_line = ColumnDataSource(data={'timestamps': [], 'values': []})
+        self.gray_volumes = ColumnDataSource(data={'timestamps': [], 'volumes': []})
 
         self.create_candles()
         self.update_paragraph('text', '', '')
@@ -577,6 +658,11 @@ class VariableDocument(Document):
         raw_data_start = int(index1)  # int(self.day_slider.value * self.day_length)
         raw_data_stop = int(index2)  # int(raw_data_start + self.day_length)
 
+        self.gray_volumes.data = {
+            'timestamps': self.vbar_gray_x[raw_data_start:raw_data_stop],
+            'volumes': self.vbar_gray[raw_data_start:raw_data_stop],
+        }
+
         self.bin_height = 50
         bins, volumes = generate_volumes(self.raw_data[raw_data_start:raw_data_stop], self.bin_height)
         self.bins = bins
@@ -588,7 +674,7 @@ class VariableDocument(Document):
 
 # if __name__ == '__main__':
 #    test()
-# test()
+
 
 time1 = datetime.datetime(2020, 4, 25)
 granularity = '5m'
@@ -596,7 +682,7 @@ granularity = '5m'
 doc = Document(time1, granularity, dark_mode=True)
 doc.candles.sizing_mode = 'stretch_both'
 # doc.sizing_mode = 'stretch_both'
-doc.volume_plot.y_range = doc.candles.y_range
+doc.volume_plot.y_range = doc.candles.extra_y_ranges['candles_y']
 
 row1 = row(doc.volume_plot, doc.candles)
 row1.sizing_mode = 'stretch_both'
