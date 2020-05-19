@@ -516,7 +516,7 @@ class Document:
             min(self.green_candles.data['timestamps'][0], self.red_candles.data['timestamps'][0]),
             max(self.green_candles.data['timestamps'][-1], self.red_candles.data['timestamps'][-1])
         ]
-        y = [r2.json()[2], r2.json()[2]]
+        y = [round(r2.json()[2], 1), round(r2.json()[2], 1)]
         # self.actual_line.data = {'timestamps': x, 'values': y, 'name': [str(y[0]), str(y[-1])]}
         self.actual_line.data = {'timestamps': x, 'values': y}  # , 'name': str(y[0])}
 
