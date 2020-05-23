@@ -4,7 +4,7 @@ from itertools import repeat
 from bokeh.plotting import figure, show, curdoc, ColumnDataSource
 from bokeh.models import HoverTool, Slider, Paragraph, Tabs, Panel, RangeSlider, DateRangeSlider, Range1d, LinearAxis
 from bokeh.layouts import row, column
-from bokeh.driving import count
+from bokeh.models.callbacks import CustomJS
 
 
 def get_data_bitfinex(time_start, time_stop, granularity):
@@ -183,6 +183,32 @@ def test():
 
 def update_source_data(attr, old, new):
     print('slider value changed')
+
+
+width = ColumnDataSource(data=dict(width=[0]))
+
+callback = CustomJS(args=dict(width=width), code="""
+var w = 0;
+w = window.innerWidth;
+width.data = {'width': [w]};
+width.change.emit();
+console.log(w);
+""")
+
+
+def get_window_size(attr, old, new):
+    wi = width.data['width'][0]
+    print('window width: ', wi)
+    if wi:
+        doc.candles.sizing_mode = 'stretch_height'
+        doc.volume_plot.sizing_mode = 'stretch_height'
+        f = 0.238
+        border = 10
+        doc.candles.width = int(wi * (1 - f) - border)
+        doc.volume_plot.width = int(wi * f - border)
+
+
+width.on_change('data', get_window_size)
 
 
 class Document:
@@ -681,6 +707,8 @@ granularity = '5m'
 
 doc = Document(time1, granularity, dark_mode=True)
 doc.candles.sizing_mode = 'stretch_both'
+doc.volume_plot.sizing_mode = 'stretch_both'
+
 # doc.sizing_mode = 'stretch_both'
 doc.volume_plot.y_range = doc.candles.extra_y_ranges['candles_y']
 
@@ -706,8 +734,12 @@ vardoc_layout.sizing_mode = 'stretch_both'
 
 tab2 = Panel(child=vardoc_layout, title='variable')
 tabs = Tabs(tabs=[tab1, tab2])
+
+doc.candles.js_on_event('tap', callback)  # gets window width and updates width ColumnDataSource
+
 curdoc().add_root(tabs)
 curdoc().add_periodic_callback(doc.update_last_value, 2000)
 curdoc().add_periodic_callback(doc.update_everything, 60000)
+# curdoc().add_periodic_callback(get_window_size, 5000)
 
 # start bokeh server by 'bokeh serve --show visualizer.py'
